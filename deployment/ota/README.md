@@ -53,6 +53,19 @@ Signature verification is ON in the app (cert PEM baked into `ios/APP/Supporting
 
 ---
 
+## Regions
+
+Two regions publish OTAs: `global` and `cn`. Both share the same bucket, CloudFront distribution, `APP_ASSETS_URL`, and signing cert — only the S3 prefix differs (`/ota/prod/<region>/…`).
+
+- **`global`** — iOS + Android. Published by `ota_publish_global_ios` and `ota_publish_global_android`.
+- **`cn`** — Android only. Published by `ota_publish_cn_android`. iOS stays on `global` because there is a single iOS binary that resolves region at runtime (`config/region.config.ts` → `getActiveRegion`); its OTA URL is in `ios/APP/Supporting/Expo.plist`.
+
+Android has two product flavors (`global`, `cn`). The main `AndroidManifest.xml` sets the global OTA URL; `android/app/src/cn/AndroidManifest.xml` overrides `EXPO_UPDATE_URL` to the CN prefix with `tools:replace`. Both flavors share the same fingerprint (`@expo/fingerprint` hashes the whole native tree), so the CN APK's `expo-runtime-version` matches what the CN publish job stamps into the manifest.
+
+A CN bundle is built from `.env.cn` (`APP_REGION=cn`) during `expo export`, so the published JS carries `extra.appRegion='cn'` — the CN APK stays on CN cloud / WeChat / CN legal links after an OTA.
+
+---
+
 ## CI variables
 
 All set via GitLab → Settings → CI/CD → Variables. Masked + protected.
@@ -133,10 +146,14 @@ curl -s "https://$CF/ota/prod/global/ios/$FP_IOS/latest/manifest.json" \
   | jq '.runtimeVersion, .id, .launchAsset.url'
 curl -s "https://$CF/ota/prod/global/android/$FP_ANDROID/latest/manifest.json" \
   | jq '.runtimeVersion, .id, .launchAsset.url'
+curl -s "https://$CF/ota/prod/cn/android/$FP_ANDROID/latest/manifest.json" \
+  | jq '.runtimeVersion, .id, .launchAsset.url'
 
 # Client-facing flat URL — only works after the CloudFront routing Function is deployed
 curl -sI -H "expo-runtime-version: $FP_IOS" \
   "https://$CF/ota/prod/global/ios/manifest.json"
+curl -sI -H "expo-runtime-version: $FP_ANDROID" \
+  "https://$CF/ota/prod/cn/android/manifest.json"
 ```
 
 On a device, the two-launch test:
